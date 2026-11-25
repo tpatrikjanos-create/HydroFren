@@ -41,3 +41,48 @@ fun playSound(c: Context, resId: Int) {
     mp.setOnCompletionListener { it.release() }
     mp.start()
 }
+
+// Játék-hangok: a cicák simogatásra dorombolnak (ismétlődő hang), a többi állat a saját hangját adja.
+object PetSounds {
+    private var purr: MediaPlayer? = null
+    private var last = 0L
+
+    private fun isCat(c: Context) = c.currentSpecies().id.let { it == "cat" || it == "tabby" }
+
+    // egy rövid megszólalás, legfeljebb ilyen sűrűn
+    fun voice(c: Context, minGapMs: Long = 600L) {
+        val now = System.currentTimeMillis()
+        if (now - last < minGapMs) return
+        last = now
+        playSound(c, c.currentSpecies().sound)
+    }
+
+    fun petStart(c: Context) {
+        if (isCat(c)) {
+            stop()
+            purr = MediaPlayer.create(c, R.raw.purr)?.apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                isLooping = true
+                start()
+            }
+        } else voice(c, 0L)
+    }
+
+    // simogatás közben a nem-cica állatok időnként újra megszólalnak
+    fun petting(c: Context) {
+        if (!isCat(c)) voice(c, 1600L)
+    }
+
+    fun stop() {
+        purr?.let {
+            runCatching { it.stop() }
+            it.release()
+        }
+        purr = null
+    }
+}

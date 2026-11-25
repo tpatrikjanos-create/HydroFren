@@ -16,8 +16,31 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
-// Az Android a csatorna hangját az első létrehozáskor rögzíti, ezért új azonosító kell a hang váltásához
-const val CHANNEL_ID = "hydro_drop_v4"
+// Választható értesítési hangok. Az Android a csatorna hangját a létrehozáskor rögzíti,
+// ezért minden hang saját csatornát kap; váltáskor a régi csatorna törlődik.
+data class NotifSound(val key: String, val name: String, val res: Int)
+
+object NotifSounds {
+    val ALL = listOf(
+        NotifSound("original", "Eredeti csepp", R.raw.notif_original),
+        NotifSound("cave", "Mély barlang", R.raw.notif_cave),
+        NotifSound("well", "Kút visszhanggal", R.raw.notif_well),
+        NotifSound("bubble", "Buborékos csepp", R.raw.notif_bubble),
+        NotifSound("bloop", "Mély bloop", R.raw.notif_bloop),
+        NotifSound("real", "Valósághű csepp", R.raw.notif_real)
+    )
+
+    fun current(c: Context): NotifSound =
+        ALL.firstOrNull { it.key == Water.prefs(c).getString("notifSound", "original") } ?: ALL[0]
+
+    fun select(c: Context, key: String) {
+        Water.prefs(c).edit().putString("notifSound", key).apply()
+        ensureChannel(c)
+    }
+}
+
+fun channelId(c: Context): String = "hydro_drop_v5_" + NotifSounds.current(c).key
+
 const val NOTIF_ID = 1001
 
 fun moodText(mood: Int): String = when (mood) {
@@ -28,16 +51,17 @@ fun moodText(mood: Int): String = when (mood) {
     else -> "Kérlek, igyál egy pohár vizet"
 }
 
-// Vízcsepp hang, egy rezgés
+// A kiválasztott vízcsepp-hang és egy rezgés
 fun ensureChannel(c: Context) {
     val nm = c.getSystemService(NotificationManager::class.java)
-    // a régi csatornák hangját már nem lehet felülírni, ezért töröljük őket
-    nm.deleteNotificationChannel("hydro_drop_v2")
-    nm.deleteNotificationChannel("hydro_drop_v3")
-    if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-    val soundUri = Uri.parse("android.resource://${c.packageName}/${R.raw.water_drop}")
-    val ch = NotificationChannel(CHANNEL_ID, "HydroFren emlékeztető", NotificationManager.IMPORTANCE_HIGH).apply {
-        description = "Mély, visszhangos vízcsepp és egy rezgés"
+    val id = channelId(c)
+    // a többi (régi vagy másik hangú) vízcsatorna törlése
+    nm.notificationChannels.filter { it.id.startsWith("hydro_drop") && it.id != id }.forEach { nm.deleteNotificationChannel(it.id) }
+    if (nm.getNotificationChannel(id) != null) return
+    val snd = NotifSounds.current(c)
+    val soundUri = Uri.parse("android.resource://${c.packageName}/${snd.res}")
+    val ch = NotificationChannel(id, "HydroFren emlékeztető", NotificationManager.IMPORTANCE_HIGH).apply {
+        description = "Hang: ${snd.name}, egy rezgés"
         enableVibration(true)
         vibrationPattern = longArrayOf(0, 450)
         setSound(
@@ -76,7 +100,7 @@ fun showReminder(c: Context, mood: Int, left: Int) {
     val later = PendingIntent.getBroadcast(c, 5, Intent(c, LaterReceiver::class.java).setAction("later"), flags)
     val busy = PendingIntent.getBroadcast(c, 6, Intent(c, BusyReceiver::class.java).setAction("busy"), flags)
 
-    val n = NotificationCompat.Builder(c, CHANNEL_ID)
+    val n = NotificationCompat.Builder(c, channelId(c))
         .setSmallIcon(R.drawable.ic_notif_drop)
         .setColor(Color.parseColor("#1E88C9"))
         .setLargeIcon(Mascot.bitmap(c, 256, mood, true))

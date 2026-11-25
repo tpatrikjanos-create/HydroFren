@@ -18,6 +18,11 @@ const val SAD = 2
 const val CRY = 3
 const val ANGRY = 4
 
+// Vízi felszerelés a vízszint szerint
+const val GEAR_NONE = 0
+const val GEAR_RING = 1   // úszógumi
+const val GEAR_DIVE = 2   // búvárszemüveg, oxigénpalack, légzőcső
+
 // ---------- Fajok ----------
 // Mind ugyanarra a vízcsepp-testre és arcrendszerre épül; csak a jellegzetes részek térnek el.
 data class Species(val id: String, val name: String, val color: Int, val whiskers: Boolean, val sound: Int)
@@ -171,7 +176,7 @@ object CritterDraw {
     // blink = csukott szem (pislogás); joy = örömteli arc; offer = pohár; pill = gyógyszer
     fun draw(
         canvas: Canvas, size: Float, look: Look, mood: Int, offer: Boolean, lift: Float,
-        joy: Boolean = false, pill: Boolean = false, blink: Boolean = false
+        joy: Boolean = false, pill: Boolean = false, blink: Boolean = false, gear: Int = GEAR_NONE
     ) {
         val s = size / 120f
         canvas.save()
@@ -182,6 +187,8 @@ object CritterDraw {
         val c = if (sp == "panda") 0xFFF7F7F7.toInt() else look.color
 
         behind(canvas, sp, c)
+        if (gear == GEAR_DIVE) tank(canvas)
+        if (gear == GEAR_RING) ring(canvas, back = true)
         canvas.drawPath(body, paint(c))
         if (sp == "panda") canvas.drawPath(body, stroke(0xFF2B2B2B.toInt(), 2f))
 
@@ -216,7 +223,9 @@ object CritterDraw {
             canvas.drawCircle(77f, 92f, 2f, tear)
         }
 
-        if (look.whiskers && SpeciesList.byId(sp).whiskers) whiskers(canvas, sp)
+        if (look.whiskers && SpeciesList.byId(sp).whiskers && gear != GEAR_DIVE) whiskers(canvas, sp)
+        if (gear == GEAR_DIVE) goggles(canvas, sp)
+        if (gear == GEAR_RING) ring(canvas, back = false)
 
         val pawColor = when (sp) {
             "panda" -> 0xFF2B2B2B.toInt()
@@ -226,6 +235,51 @@ object CritterDraw {
         else if (pill) Props.pill(canvas, pawColor)
 
         canvas.restore()
+    }
+
+    // Úszógumi: piros-fehér karika a vízvonalon; a hátsó fele a test mögött, az első előtte
+    private fun ring(canvas: Canvas, back: Boolean) {
+        val r = RectF(12f, 80f, 108f, 102f)
+        val red = stroke(0xFFFF5A5F.toInt(), 9f).apply { strokeCap = Paint.Cap.BUTT }
+        val white = stroke(Color.WHITE, 9f).apply { strokeCap = Paint.Cap.BUTT }
+        val start = if (back) 180f else 0f
+        canvas.drawArc(r, start, 180f, false, red)
+        val stripes = if (back) listOf(205f, 265f, 325f) else listOf(25f, 85f, 145f)
+        stripes.forEach { canvas.drawArc(r, it, 16f, false, white) }
+        if (!back) canvas.drawArc(RectF(r.left + 4f, r.top + 2f, r.right - 4f, r.bottom - 2f), 200f, 60f, false, stroke(Color.WHITE, 1.6f, 140))
+    }
+
+    // Oxigénpalack a hátán (a test mögött)
+    private fun tank(canvas: Canvas) {
+        val r = RectF(82f, 42f, 100f, 88f)
+        canvas.drawRoundRect(r, 8f, 8f, paint(0xFFF5B82E.toInt()))
+        canvas.drawRect(82f, 58f, 100f, 62f, paint(0xFFD9971A.toInt()))
+        canvas.drawRoundRect(r, 8f, 8f, stroke(INK, 1.6f))
+        canvas.drawRect(87f, 36f, 95f, 42f, paint(0xFF8A96A3.toInt()))
+        canvas.drawLine(86f, 50f, 86f, 80f, stroke(Color.WHITE, 2f, 150))
+    }
+
+    // Búvárszemüveg a szemeken, légzőcső a szájban, tömlő a palackhoz
+    private fun goggles(canvas: Canvas, sp: String) {
+        val dark = 0xFF2B3A4A.toInt()
+        val (ex, ey) = when (sp) {
+            "frog" -> 38f to 58f
+            "axolotl" -> 43f to 76f
+            else -> 47f to 75f
+        }
+        val strap = stroke(dark, 3f)
+        canvas.drawLine(22f, ey - 1f, ex - 9f, ey - 1f, strap)
+        canvas.drawLine(120f - ex + 9f, ey - 1f, 98f, ey - 1f, strap)
+        for (x in listOf(ex, 120f - ex)) {
+            val lens = RectF(x - 9f, ey - 8f, x + 9f, ey + 8f)
+            canvas.drawRoundRect(lens, 7f, 7f, paint(BUBBLE, 95))
+            canvas.drawRoundRect(lens, 7f, 7f, stroke(dark, 3f))
+            canvas.drawLine(x - 5f, ey - 4f, x - 1f, ey - 6f, stroke(Color.WHITE, 1.8f, 200))
+        }
+        canvas.drawLine(ex + 9f, ey - 1f, 120f - ex - 9f, ey - 1f, strap)
+        // tömlő a palacktól a szájig, és a szájrész
+        canvas.drawPath(Path().apply { moveTo(91f, 40f); cubicTo(112f, 52f, 104f, 104f, 66f, 99f) }, stroke(dark, 3f))
+        canvas.drawRoundRect(RectF(53f, 94f, 67f, 103f), 4f, 4f, paint(dark))
     }
 
     // A test mögötti részek: fülek, szárnyak, uszonyok, kopoltyúk
@@ -498,9 +552,9 @@ object CatDraw {
 object Mascot {
     fun draw(
         canvas: Canvas, size: Float, look: Look, mood: Int, offer: Boolean, pill: Boolean,
-        lift: Float, joy: Boolean, blink: Boolean = false
+        lift: Float, joy: Boolean, blink: Boolean = false, gear: Int = GEAR_NONE
     ) {
-        CritterDraw.draw(canvas, size, look, mood, offer, lift, joy, pill, blink)
+        CritterDraw.draw(canvas, size, look, mood, offer, lift, joy, pill, blink, gear)
     }
 
     fun bitmap(c: Context, px: Int, mood: Int, offer: Boolean, pill: Boolean = false): Bitmap {

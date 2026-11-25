@@ -95,7 +95,14 @@ class MainActivity : Activity() {
         header.addView(label(SimpleDateFormat("EEEE", Locale("hu")).format(Date()), TypeScale.CAPTION, color = pal.sub))
 
         // Vízjelenet a számokkal, a következő időponttal és a szövegbuborékkal
-        scene = WaterScene(this).apply { cornerDp = 26 }
+        scene = WaterScene(this).apply {
+            cornerDp = 26
+            // játék a karakterrel: koppintás, simogatás
+            onTapCharacter = { PetSounds.voice(this@MainActivity) }
+            onPetStart = { PetSounds.petStart(this@MainActivity) }
+            onPetting = { PetSounds.petting(this@MainActivity) }
+            onPetEnd = { PetSounds.stop() }
+        }
         totalTv = label("0", TypeScale.DISPLAY).apply {
             typeface = Fonts.display(this@MainActivity)
             includeFontPadding = false
@@ -251,6 +258,11 @@ class MainActivity : Activity() {
         if (Water.isReduced(this)) {
             say("Ma később kezdtük, ezért a mai cél ${Water.dailyTarget(this)} ml. Próbáljuk meghaladni!", 6000L)
         }
+    }
+
+    override fun onPause() {
+        PetSounds.stop()
+        super.onPause()
     }
 
     override fun onDestroy() {

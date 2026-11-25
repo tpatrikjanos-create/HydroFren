@@ -142,8 +142,46 @@ class SettingsActivity : Activity() {
         }
         val routine = group(goalRow, cupRow, startRow, endRow, gapRow, repeatRow)
 
+        // ---------- Értesítés hangja ----------
+        val soundBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
+        fun buildSounds() {
+            soundBox.removeAllViews()
+            val cur = NotifSounds.current(act).key
+            val rows = NotifSounds.ALL.map { s ->
+                val on = s.key == cur
+                LinearLayout(act).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(52)
+                    setPadding(dp(16), dp(10), dp(14), dp(10))
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = s.name + if (on) ", kiválasztva" else ""
+                    background = rippleOf(rect(Color.TRANSPARENT, 18))
+                    addView(label(s.name, TypeScale.BODY, bold = on), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    if (on) addView(ImageView(act).apply { setImageDrawable(tinted(R.drawable.ic_check, pal.primary, 22)) },
+                        LinearLayout.LayoutParams(dp(22), dp(22)))
+                    setOnClickListener {
+                        playSound(act, s.res)
+                        NotifSounds.select(act, s.key)
+                        buildSounds()
+                        saved()
+                    }
+                }
+            }
+            soundBox.addView(group(*rows.toTypedArray()))
+        }
+        buildSounds()
+
         // ---------- Karakter ----------
-        cat = CatView(act).apply { offer = true }
+        cat = CatView(act).apply {
+            offer = true
+            contentDescription = "Karakter előnézet, koppints rá"
+            setOnClickListener {
+                celebrate()
+                PetSounds.voice(act)
+            }
+        }
         var colorIdx = 0
         val colorHolder = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         fun pushLook() {
@@ -312,6 +350,8 @@ class SettingsActivity : Activity() {
             addView(appearance)
             addView(sectionTitle("Napi rutin"))
             addView(routine)
+            addView(sectionTitle("Értesítés hangja"))
+            addView(soundBox)
             addView(sectionTitle("Karakter"))
             addView(charBox)
             addView(group(nameRow).apply { layoutParams = lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, top = 10) })
