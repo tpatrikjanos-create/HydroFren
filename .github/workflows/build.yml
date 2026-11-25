@@ -24,7 +24,19 @@ jobs:
           gradle-version: "8.10.2"
 
       - name: APK fordítása
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+      - name: Hibanapló közzététele, ha a fordítás elbukik
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: log-${{ github.run_number }}
+          name: Fordítási napló ${{ github.run_number }}
+          files: build.log
+          prerelease: true
+          make_latest: false
 
       - name: APK átnevezése
         run: cp app/build/outputs/apk/debug/app-debug.apk HydroFren.apk

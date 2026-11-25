@@ -36,20 +36,18 @@ object WaterArt {
     // t = eltelt idő másodpercben (a hullám 4 másodpercenként ér körbe)
     fun draw(
         canvas: Canvas, w: Float, h: Float, level: Float, t: Float,
-        look: Look, mood: Int, joy: Boolean, dark: Boolean,
+        look: Look, mood: Int, joy: Boolean, pal: Palette,
         catLift: Float = 0f, catCenter: Float = 0.5f,
-        offer: Boolean = false, pill: Boolean = false, night: Boolean = false
+        offer: Boolean = false, pill: Boolean = false, night: Boolean = false, blink: Boolean = false
     ) {
         // night = a gyógyszer-ablak nyugodt, lilás éjszakai színvilága
         val skyTop = when {
             night -> 0xFF2E2A5C.toInt()
-            dark -> 0xFF143247.toInt()
-            else -> 0xFFF6FCFF.toInt()
+            else -> pal.skyTop
         }
         val skyBottom = when {
             night -> 0xFF15122E.toInt()
-            dark -> 0xFF0B1C2A.toInt()
-            else -> 0xFFD6EEFA.toInt()
+            else -> pal.skyBottom
         }
         sky.shader = LinearGradient(0f, 0f, 0f, h, skyTop, skyBottom, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w, h, sky)
@@ -59,7 +57,7 @@ object WaterArt {
         val amp = h * 0.016f
 
         // hátsó, világosabb hullám
-        back.color = if (night) 0xFFB9A8FF.toInt() else BUBBLE
+        back.color = if (night) 0xFFB9A8FF.toInt() else pal.waterBack
         back.alpha = if (night) 110 else 140
         wave(canvas, w, h, sy - amp * 0.6f, amp, phase * 1.3f + 1.7f, 1.4f, back)
 
@@ -71,14 +69,14 @@ object WaterArt {
         val cx = (w * catCenter - cs / 2f).coerceIn(0f, w - cs)
         canvas.save()
         canvas.translate(cx, cy + catLift)
-        Mascot.draw(canvas, cs, look, mood, offer, pill, 0f, joy)
+        Mascot.draw(canvas, cs, look, mood, offer, pill, 0f, joy, blink)
         canvas.restore()
 
         // első hullám: kissé áttetsző, így a cica alsó fele a víz alatt látszik
         front.shader = if (night) {
             LinearGradient(0f, sy, 0f, h, 0xFF7C5CFA.toInt(), 0xFF2A2350.toInt(), Shader.TileMode.CLAMP)
         } else {
-            LinearGradient(0f, sy, 0f, h, TIDE, LAGOON, Shader.TileMode.CLAMP)
+            LinearGradient(0f, sy, 0f, h, pal.waterTop, pal.waterBottom, Shader.TileMode.CLAMP)
         }
         front.alpha = 228
         wave(canvas, w, h, sy, amp, phase, 1f, front)
@@ -120,7 +118,7 @@ object WaterArt {
         })
         draw(
             canvas, wPx.toFloat(), hPx.toFloat(), Water.progress(c), 1.3f,
-            c.currentLook(), Water.currentMood(c), false, Theme.dark(c)
+            c.currentLook(), Water.currentMood(c), false, Theme.p(c)
         )
         return bmp
     }
@@ -130,7 +128,8 @@ object WaterArt {
 class WaterScene(c: Context) : View(c) {
     var look: Look = c.currentLook()
     var mood: Int = HAPPY
-    var dark: Boolean = Theme.dark(c)
+    var pal: Palette = Theme.p(c)
+    private val blinker = Blinker(this)
     var offer: Boolean = false
     var pill: Boolean = false
     var night: Boolean = false
@@ -172,11 +171,13 @@ class WaterScene(c: Context) : View(c) {
         super.onAttachedToWindow()
         // kikapcsolt animációknál (akadálymentesítés) a víz áll
         if (ValueAnimator.areAnimatorsEnabled()) loop.start()
+        blinker.schedule()
     }
 
     override fun onDetachedFromWindow() {
         loop.cancel()
         levelAnim?.cancel()
+        blinker.stop()
         super.onDetachedFromWindow()
     }
 
@@ -254,7 +255,7 @@ class WaterScene(c: Context) : View(c) {
     override fun onDraw(canvas: Canvas) {
         WaterArt.draw(
             canvas, width.toFloat(), height.toFloat(), level, t,
-            look, mood, joy, dark, lift, catCenter, offer, pill, night
+            look, mood, joy, pal, lift, catCenter, offer, pill, night, blinker.closed && !joy
         )
         drops.forEach {
             dropPaint.alpha = (255 * it.life.coerceIn(0f, 1f)).toInt()

@@ -26,8 +26,9 @@ import android.widget.TextView
 // 1. karakter és név (élő előnézettel), 2. napi cél és ébrenléti idő, 3. engedélyek
 class SetupActivity : Activity() {
     private var step = 0
-    private var tabby = false
-    private var colorIdx = BLUE_INDEX
+    private var species = "cat"
+    private var color = SpeciesList.byId("cat").color
+    private var backCb: Any? = null
     private var eyes = 0
     private var mouth = 0
     private var whiskers = true
@@ -96,7 +97,8 @@ class SetupActivity : Activity() {
         val root = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Theme.bg(act))
-            setPadding(0, dp(24), 0, 0)
+            setPadding(0, dp(8), 0, 0)
+            applySystemBarPadding(top = true, bottom = true)
             addView(dotRow)
             addView(cat, LinearLayout.LayoutParams(dp(130), dp(130)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -105,6 +107,7 @@ class SetupActivity : Activity() {
             addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(nav)
         }
+        themeWindow()
         setContentView(root)
         showStep(0)
     }
@@ -125,7 +128,7 @@ class SetupActivity : Activity() {
         if (step > 0) showStep(step - 1) else super.onBackPressed()
     }
 
-    private fun look() = Look(BODY_COLORS[colorIdx], eyes, mouth, whiskers, tabby)
+    private fun look() = Look(color, eyes, mouth, whiskers, species)
 
     private fun preview() = cat.applyLook(look())
 
@@ -158,23 +161,62 @@ class SetupActivity : Activity() {
         val colorHolder = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         fun buildColors() {
             colorHolder.removeAllViews()
-            colorHolder.addView(chipRow(List(BODY_COLORS.size) { "" }, colorIdx, swatches = BODY_COLORS) {
-                colorIdx = it
+            if (species == "panda") {
+                colorHolder.addView(label("A panda mindig fekete-fehér.", TypeScale.CAPTION, color = Theme.sub(act)))
+                return
+            }
+            val colors = colorChoices(species)
+            colorHolder.addView(chipRow(List(colors.size) { "" }, colors.indexOf(color).coerceAtLeast(0), swatches = colors) {
+                color = colors[it]
                 preview()
             })
         }
         buildColors()
 
+        // A tíz karakter rácsban; koppintásra előnézet és hangpróba
+        val p = Theme.p(act)
+        val grid = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
+        fun buildGrid() {
+            grid.removeAllViews()
+            SpeciesList.ALL.chunked(5).forEach { items ->
+                val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+                items.forEach { sp ->
+                    val on = sp.id == species
+                    val tile = LinearLayout(act).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        setPadding(0, dp(6), 0, dp(6))
+                        background = rippleOf(rect(if (on) p.soft else android.graphics.Color.TRANSPARENT, 14).apply {
+                            if (on) setStroke(dp(2), p.primary)
+                        })
+                        isClickable = true
+                        contentDescription = sp.name + if (on) ", kiválasztva" else ""
+                        addView(android.widget.ImageView(act).apply { setImageBitmap(speciesBitmap(act, sp, dp(48))) },
+                            LinearLayout.LayoutParams(dp(48), dp(48)))
+                        addView(label(sp.name, 11f, center = true, bold = on, color = if (on) p.text else p.sub))
+                        setOnClickListener {
+                            species = sp.id
+                            color = sp.color
+                            playSound(act, sp.sound)
+                            buildGrid()
+                            buildColors()
+                            preview()
+                        }
+                    }
+                    row.addView(tile, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(dp(2), dp(2), dp(2), dp(2))
+                    })
+                }
+                grid.addView(row)
+            }
+        }
+        buildGrid()
+
         return LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             addView(heading("Válassz egy kis barátot", "Ő szól majd, ha ideje inni"))
             addView(caption("Karakter"))
-            addView(chipRow(listOf("Kék cica", "Cirmos cica"), 0) {
-                tabby = it == 1
-                colorIdx = if (tabby) ORANGE_INDEX else BLUE_INDEX
-                buildColors()
-                preview()
-            })
+            addView(grid)
             addView(caption("Neve"))
             addView(nameEt)
             addView(nameErr)
@@ -267,12 +309,12 @@ class SetupActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             addView(LinearLayout(act).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(label("Ébredés", TypeScale.CAPTION, color = Theme.sub(act)))
+                addView(label("Kezdete", TypeScale.CAPTION, color = Theme.sub(act)))
                 addView(startEt)
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(10) })
             addView(LinearLayout(act).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(label("Lefekvés", TypeScale.CAPTION, color = Theme.sub(act)))
+                addView(label("Vége", TypeScale.CAPTION, color = Theme.sub(act)))
                 addView(endEt)
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -292,8 +334,8 @@ class SetupActivity : Activity() {
             addView(profileErr)
             addView(calcBtn)
             addView(skipSwitch)
-            addView(caption("Mikor vagy ébren?"))
-            addView(label("Csak ebben az időszakban szólok. ÓÓ:PP formátum.", TypeScale.CAPTION, color = Theme.sub(act)))
+            addView(caption("Mikor igyunk? (Emlékeztetők)"))
+            addView(label("Ebben az időszakban szólok. ÓÓ:PP formában, például 06:00.", TypeScale.CAPTION, color = Theme.sub(act)))
             addView(timeRow)
             addView(timeErr)
         }
@@ -302,10 +344,10 @@ class SetupActivity : Activity() {
     private fun roundBtn(text: String, onClick: () -> Unit): Button = Button(this).apply {
         this.text = text
         textSize = 22f
-        setTextColor(Color.WHITE)
+        setTextColor(Theme.p(this@SetupActivity).onPrimary)
         background = rippleOf(GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(TIDE)
+            setColor(Theme.primary(this@SetupActivity))
         })
         setPadding(0, 0, 0, 0)
         setOnClickListener { onClick() }
@@ -383,7 +425,7 @@ class SetupActivity : Activity() {
         dots.forEachIndexed { idx, d ->
             d.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (idx == step) TIDE else Theme.field(this@SetupActivity))
+                setColor(if (idx == step) Theme.primary(this@SetupActivity) else Theme.field(this@SetupActivity))
             }
         }
         backBtn.visibility = if (step == 0) View.INVISIBLE else View.VISIBLE
@@ -393,6 +435,16 @@ class SetupActivity : Activity() {
         cat.mood = HAPPY
         cat.invalidate()
         scroll.scrollTo(0, 0)
+        // rendszer Vissza-gesztus (Android 13+): az előző lépésre visz, az első lépésen bezár
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            (backCb as? android.window.OnBackInvokedCallback)?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+            backCb = null
+            if (step > 0) {
+                val cb = android.window.OnBackInvokedCallback { showStep(step - 1) }
+                onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+                backCb = cb
+            }
+        }
     }
 
     private fun next() {
@@ -424,8 +476,8 @@ class SetupActivity : Activity() {
         val end = parseHm(endEt.text.toString()) ?: 22 * 60
         Water.prefs(this).edit()
             .putString("name", nameEt.text.toString().trim())
-            .putString("species", if (tabby) "tabby" else "cat")
-            .putInt("catColor", BODY_COLORS[colorIdx])
+            .putString("species", species)
+            .putInt("catColor", color)
             .putInt("eyes", eyes)
             .putInt("mouth", mouth)
             .putBoolean("whiskers", whiskers)
